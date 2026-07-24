@@ -93,7 +93,7 @@ async function sendTicketEmail(ticket) {
 
     // C. Desain Isi Email yang dikirim ke PEMBELI
     let mailOptions = {
-        from: '"Synesthesia Ticket Event" <cumabacafypdoang@gmail.com>',
+        from: '"Synesthesia Ticket Event" <EMAIL_PANITIA_KAMU@@gmail.com>',
         to: ticket.email, // <--- OTOMATIS dikirim ke email pembeli!
         subject: `[E-Ticket Resmi] Pembayaran Berhasil - ${ticket.order_id}`,
         html: `
