@@ -109,7 +109,7 @@ async function sendTicketEmail(ticket) {
             secure: true, 
             auth: {
                 user: 'cumabacafypdoang@gmail.com', 
-                pass: 'ztrpypclgntlvyma' // Ganti dengan App Password baru kamu jika sudah direvoke
+                pass: 'uvuehmncmucmtrfs' // Ganti dengan App Password baru kamu jika sudah direvoke
             }
         });
 
