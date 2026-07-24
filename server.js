@@ -1,3 +1,78 @@
+const express = require('express');
+const cors = require('cors');
+const midtransClient = require('midtrans-client');
+const nodemailer = require('nodemailer');
+const QRCode = require('qrcode');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Database sementara untuk simpan data tiket
+const ticketsDB = {};
+
+// Setup Midtrans
+const snap = new midtransClient.Snap({
+    isProduction: false,
+    serverKey: 'Mid-server-b_pYTptAs4mxn1oAjQdobLoj' // Pastikan Server Key kamu benar
+});
+
+// 1. Endpoint Charge Ticket (Saat pembeli klik bayar)
+app.post('/api/charge-ticket', async (req, res) => {
+    try {
+        const { order_id, gross_amount, first_name, email, ticket_name } = req.body;
+
+        // Simpan data pemesan ke memori sementara
+        ticketsDB[order_id] = {
+            order_id,
+            first_name,
+            email, // Email pembeli
+            ticket_name,
+            status: 'PENDING',
+            used: false
+        };
+
+        const parameter = {
+            transaction_details: { order_id, gross_amount },
+            customer_details: { first_name, email },
+            item_details: [{ id: 'TKT-01', price: gross_amount, quantity: 1, name: ticket_name }]
+        };
+
+        const transaction = await snap.createTransaction(parameter);
+        res.status(200).json({ status: 'success', snap_token: transaction.token });
+
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// 2. Webhook Midtrans (Otomatis dipanggil Midtrans pas pembayaran LUNAS)
+app.post('/api/midtrans-notification', async (req, res) => {
+    try {
+        const notification = req.body;
+        const orderId = notification.order_id;
+        const transactionStatus = notification.transaction_status;
+        const fraudStatus = notification.fraud_status;
+
+        if (transactionStatus === 'capture' || transactionStatus === 'settlement') {
+            if (fraudStatus === 'accept' || !fraudStatus) {
+                // Update status tiket jadi PAID
+                if (ticketsDB[orderId]) {
+                    ticketsDB[orderId].status = 'PAID';
+                    
+                    // Kirim E-Ticket + Barcode ke email pembeli
+                    await sendTicketEmail(ticketsDB[orderId]);
+                }
+            }
+        }
+        res.status(200).send('OK');
+    } catch (err) {
+        console.error("Gagal webhook:", err);
+        res.status(500).send('Error');
+    }
+});
+
+
 // Fungsi Khusus Kirim Email Tiket & Bikin QR Code
 async function sendTicketEmail(ticket) {
     // A. Buat QR Code dalam bentuk Buffer (bukan Base64 string lagi)
