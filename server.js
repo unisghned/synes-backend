@@ -11,14 +11,14 @@ async function sendTicketEmail(ticket) {
     let transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            user: 'EMAIL_PANITIA_KAMU@gmail.com', // Email Gmail kamu
-            pass: '16_DIGIT_APP_PASSWORD_KAMU'   // 16 digit App Password
+            user: 'cumabacafypdoang@gmail.com', // Email Gmail kamu
+            pass: 'ztrpypclgntlvyma'   // 16 digit App Password
         }
     });
 
     // C. Desain Isi Email dengan Attachment CID
     let mailOptions = {
-        from: '"Synegry Ticket Event" <EMAIL_PANITIA_KAMU@gmail.com>',
+        from: '"Synegry Ticket Event" <cumabacafypdoang@gmail.com>',
         to: ticket.email,
         subject: `[E-Ticket Resmi] Pembayaran Berhasil - ${ticket.order_id}`,
         html: `
