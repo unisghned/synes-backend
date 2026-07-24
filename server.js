@@ -11,7 +11,7 @@ app.use(express.json());
 // Inisialisasi Midtrans Snap
 const snap = new midtransClient.Snap({
     isProduction: false,
-    serverKey: 'SB-Mid-server-YOUR_SERVER_KEY_HERE' // Ganti Server Key Sandbox kamu
+    serverKey: 'Mid-server-b_pYTptAs4mxn1oAjQdobLoj' // Ganti Server Key Sandbox kamu
 });
 
 // Endpoint yang dipanggil oleh ticket.html
