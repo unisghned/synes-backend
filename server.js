@@ -10,6 +10,9 @@ app.use(express.json());
 
 const ticketsDB = {};
 
+// PASTE URL GOOGLE APPS SCRIPT KAMU DI SINI
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbx_iSdKzaCbtlHbWBILKUCavoCJJgn3vMrCbz_YgWxR4fs6iaYuo_pw5TC86SNp-jF3/exec';
+
 // Setup Midtrans
 const snap = new midtransClient.Snap({
     isProduction: false,
