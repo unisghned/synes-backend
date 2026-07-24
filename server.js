@@ -8,13 +8,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Memory storage sementara (Idealnya nanti gunakan database seperti MongoDB / Supabase)
 const ticketsDB = {};
 
-// Setup Midtrans (Gunakan Process Env atau ganti string-nya di sini)
+// Setup Midtrans
 const snap = new midtransClient.Snap({
     isProduction: false,
-    serverKey: process.env.MIDTRANS_SERVER_KEY || 'Mid-server-b_pYTptAs4mxn1oAjQdobLoj' 
+    serverKey: 'Mid-server-b_pYTptAs4mxn1oAjQdobLoj' // Pastikan Server Key kamu benar
 });
 
 // 1. Endpoint Charge Ticket
@@ -22,7 +21,7 @@ app.post('/api/charge-ticket', async (req, res) => {
     try {
         const { order_id, gross_amount, first_name, email, ticket_name } = req.body;
 
-        // Simpan data ke memori
+        // Simpan ke DB sementara
         ticketsDB[order_id] = {
             order_id,
             first_name,
@@ -35,20 +34,26 @@ app.post('/api/charge-ticket', async (req, res) => {
         const parameter = {
             transaction_details: { order_id, gross_amount },
             customer_details: { first_name, email },
-            item_details: [{ id: 'TKT-01', price: gross_amount, quantity: 1, name: ticket_name }]
+            item_details: [{ id: 'TKT-01', price: gross_amount, quantity: 1, name: ticket_name }],
+            // SIMPAN DATA KUNCI DI CUSTOM EXPIRY / METADATA BIAR AMAN DARI RESET MEMORI
+            custom_field1: email,
+            custom_field2: first_name,
+            custom_field3: ticket_name
         };
 
         const transaction = await snap.createTransaction(parameter);
         res.status(200).json({ status: 'success', snap_token: transaction.token });
 
     } catch (error) {
-        console.error("Error charge ticket:", error);
+        console.error("Error charge:", error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 });
 
-// 2. Webhook Midtrans (DIPERBAIKI: Kebal Reset Vercel Serverless)
+// 2. Webhook Midtrans
 app.post('/api/midtrans-notification', async (req, res) => {
+    console.log("--> WEBHOOK MIDTRANS DITERIMA! Payload:", JSON.stringify(req.body));
+    
     try {
         const notification = req.body;
         const orderId = notification.order_id;
@@ -58,35 +63,32 @@ app.post('/api/midtrans-notification', async (req, res) => {
         if (transactionStatus === 'capture' || transactionStatus === 'settlement') {
             if (fraudStatus === 'accept' || !fraudStatus) {
                 
-                // Ambil dari DB memori ATAU rakit dari payload Midtrans kalau DB ke-reset Vercel
-                let ticket = ticketsDB[orderId];
+                // Ambil data email dari memory ATAU dari custom_field Midtrans
+                let recipientEmail = ticketsDB[orderId]?.email || notification.custom_field1;
+                let recipientName = ticketsDB[orderId]?.first_name || notification.custom_field2 || 'Pelanggan';
+                let ticketName = ticketsDB[orderId]?.ticket_name || notification.custom_field3 || 'Tiket Event';
 
-                if (!ticket) {
-                    ticket = {
-                        order_id: orderId,
-                        first_name: notification.customer_details?.first_name || 'Pembeli Tiket',
-                        email: notification.customer_details?.email,
-                        ticket_name: 'Tiket Resmi Synegry',
-                        status: 'PAID',
-                        used: false
-                    };
-                    // Simpan kembali ke memori
-                    ticketsDB[orderId] = ticket;
-                } else {
-                    ticket.status = 'PAID';
+                if (ticketsDB[orderId]) {
+                    ticketsDB[orderId].status = 'PAID';
                 }
 
-                // Kirim email jika ada alamat email penerima
-                if (ticket.email) {
-                    await sendTicketEmail(ticket);
+                console.log(`Mengirim email ke: ${recipientEmail} untuk order: ${orderId}`);
+
+                if (recipientEmail) {
+                    await sendTicketEmail({
+                        order_id: orderId,
+                        first_name: recipientName,
+                        email: recipientEmail,
+                        ticket_name: ticketName
+                    });
                 } else {
-                    console.error("Email pembeli tidak ditemukan pada webhook payload!");
+                    console.error("GAGAL: Email penerima kosong!");
                 }
             }
         }
         res.status(200).send('OK');
     } catch (err) {
-        console.error("Gagal webhook:", err);
+        console.error("Gagal diproses webhook:", err);
         res.status(500).send('Error');
     }
 });
@@ -100,16 +102,19 @@ async function sendTicketEmail(ticket) {
             name: ticket.first_name
         }));
 
+        // Pake Port 465 SSL resmi Gmail (Jauh lebih cepat di Vercel Serverless)
         let transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 465,
+            secure: true, 
             auth: {
-                user: process.env.GMAIL_USER || 'cumabacafypdoang@gmail.com',
-                pass: process.env.GMAIL_APP_PASS || 'GANTI_DENGAN_APP_PASSWORD_BARU' 
+                user: 'cumabacafypdoang@gmail.com', 
+                pass: 'ztrpypclgntlvyma' // Ganti dengan App Password baru kamu jika sudah direvoke
             }
         });
 
         let mailOptions = {
-            from: '"Synegry Ticket Event" <cumabacafypdoang@gmail.com>',
+            from: '"Synesthesia Ticket Event" <cumabacafypdoang@gmail.com>',
             to: ticket.email,
             subject: `[E-Ticket Resmi] Pembayaran Berhasil - ${ticket.order_id}`,
             html: `
@@ -143,9 +148,9 @@ async function sendTicketEmail(ticket) {
         };
 
         let info = await transporter.sendMail(mailOptions);
-        console.log("Email tiket berhasil dikirim:", info.messageId);
+        console.log("SUCCESS! Email tiket terkirim ke:", ticket.email, "MessageID:", info.messageId);
     } catch (error) {
-        console.error("Gagal mengirim email tiket:", error);
+        console.error("ERROR SENDING EMAIL:", error);
     }
 }
 
@@ -155,7 +160,7 @@ app.post('/api/validate-ticket', (req, res) => {
     const ticket = ticketsDB[order_id];
 
     if (!ticket) {
-        return res.status(404).json({ valid: false, message: 'Tiket Tidak Ditemukan dalam Sesi Ini!' });
+        return res.status(404).json({ valid: false, message: 'Tiket Tidak Ditemukan!' });
     }
 
     if (ticket.status !== 'PAID') {
