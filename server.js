@@ -8,15 +8,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const ticketsDB = {};
-
-// PASTE URL GOOGLE APPS SCRIPT KAMU DI SINI
+// URL Google Apps Script Web App Kamu
 const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbx_iSdKzaCbtlHbWBILKUCavoCJJgn3vMrCbz_YgWxR4fs6iaYuo_pw5TC86SNp-jF3/exec';
 
 // Setup Midtrans
 const snap = new midtransClient.Snap({
     isProduction: false,
-    serverKey: 'Mid-server-b_pYTptAs4mxn1oAjQdobLoj' // Pastikan Server Key kamu benar
+    serverKey: 'Mid-server-b_pYTptAs4mxn1oAjQdobLoj'
 });
 
 // 1. Endpoint Charge Ticket
@@ -24,21 +22,10 @@ app.post('/api/charge-ticket', async (req, res) => {
     try {
         const { order_id, gross_amount, first_name, email, ticket_name } = req.body;
 
-        // Simpan ke DB sementara
-        ticketsDB[order_id] = {
-            order_id,
-            first_name,
-            email,
-            ticket_name,
-            status: 'PENDING',
-            used: false
-        };
-
         const parameter = {
             transaction_details: { order_id, gross_amount },
             customer_details: { first_name, email },
             item_details: [{ id: 'TKT-01', price: gross_amount, quantity: 1, name: ticket_name }],
-            // SIMPAN DATA KUNCI DI CUSTOM EXPIRY / METADATA BIAR AMAN DARI RESET MEMORI
             custom_field1: email,
             custom_field2: first_name,
             custom_field3: ticket_name
@@ -53,7 +40,7 @@ app.post('/api/charge-ticket', async (req, res) => {
     }
 });
 
-// 2. Webhook Midtrans
+// 2. Webhook Midtrans (Kirim Data ke Google Sheets + Kirim Email E-Ticket)
 app.post('/api/midtrans-notification', async (req, res) => {
     console.log("--> WEBHOOK MIDTRANS DITERIMA! Payload:", JSON.stringify(req.body));
     
@@ -66,18 +53,34 @@ app.post('/api/midtrans-notification', async (req, res) => {
         if (transactionStatus === 'capture' || transactionStatus === 'settlement') {
             if (fraudStatus === 'accept' || !fraudStatus) {
                 
-                // Ambil data email dari memory ATAU dari custom_field Midtrans
-                let recipientEmail = ticketsDB[orderId]?.email || notification.custom_field1;
-                let recipientName = ticketsDB[orderId]?.first_name || notification.custom_field2 || 'Pelanggan';
-                let ticketName = ticketsDB[orderId]?.ticket_name || notification.custom_field3 || 'Tiket Event';
+                const recipientEmail = notification.custom_field1;
+                const recipientName = notification.custom_field2 || 'Pelanggan';
+                const ticketName = notification.custom_field3 || 'Tiket Event';
 
-                if (ticketsDB[orderId]) {
-                    ticketsDB[orderId].status = 'PAID';
+                console.log(`[1/2] Mengirim data order ${orderId} ke Google Sheets...`);
+                
+                // 🔥 A. SIMPAN DATA KE GOOGLE SHEETS
+                try {
+                    await fetch(GOOGLE_SHEETS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'add_ticket',
+                            order_id: orderId,
+                            first_name: recipientName,
+                            email: recipientEmail,
+                            ticket_name: ticketName
+                        }),
+                        redirect: 'follow'
+                    });
+                    console.log("✅ Data berhasil masuk ke Google Sheets!");
+                } catch (sheetErr) {
+                    console.error("❌ Gagal simpan ke Google Sheets:", sheetErr);
                 }
 
-                console.log(`Mengirim email ke: ${recipientEmail} untuk order: ${orderId}`);
-
+                // 🔥 B. KIRIM EMAIL TIKET
                 if (recipientEmail) {
+                    console.log(`[2/2] Mengirim email e-ticket ke: ${recipientEmail}`);
                     await sendTicketEmail({
                         order_id: orderId,
                         first_name: recipientName,
@@ -85,7 +88,7 @@ app.post('/api/midtrans-notification', async (req, res) => {
                         ticket_name: ticketName
                     });
                 } else {
-                    console.error("GAGAL: Email penerima kosong!");
+                    console.error("❌ GAGAL: Email penerima kosong!");
                 }
             }
         }
@@ -105,14 +108,13 @@ async function sendTicketEmail(ticket) {
             name: ticket.first_name
         }));
 
-        // Pake Port 465 SSL resmi Gmail (Jauh lebih cepat di Vercel Serverless)
         let transporter = nodemailer.createTransport({
             host: 'smtp.gmail.com',
             port: 465,
             secure: true, 
             auth: {
                 user: 'cumabacafypdoang@gmail.com', 
-                pass: 'uvuehmncmucmtrfs' // Ganti dengan App Password baru kamu jika sudah direvoke
+                pass: 'uvuehmncmucmtrfs'
             }
         });
 
@@ -156,35 +158,6 @@ async function sendTicketEmail(ticket) {
         console.error("ERROR SENDING EMAIL:", error);
     }
 }
-
-// 4. API Validator Scanner
-app.post('/api/validate-ticket', (req, res) => {
-    const { order_id } = req.body;
-    const ticket = ticketsDB[order_id];
-
-    if (!ticket) {
-        return res.status(404).json({ valid: false, message: 'Tiket Tidak Ditemukan!' });
-    }
-
-    if (ticket.status !== 'PAID') {
-        return res.status(400).json({ valid: false, message: 'Tiket Belum Dibayar!' });
-    }
-
-    if (ticket.used) {
-        return res.status(400).json({ valid: false, message: 'Tiket SUDAH Pernah Di-scan!' });
-    }
-
-    ticket.used = true;
-    return res.status(200).json({
-        valid: true,
-        message: 'Tiket Valid!',
-        data: {
-            nama: ticket.first_name,
-            jenis_tiket: ticket.ticket_name,
-            order_id: ticket.order_id
-        }
-    });
-});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
