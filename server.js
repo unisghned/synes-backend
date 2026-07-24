@@ -4,57 +4,55 @@ const midtransClient = require('midtrans-client');
 
 const app = express();
 
-// Keamanan CORS & Parser Data JSON
+// WAJIB: Biar frontend kamu gak terblokir CORS!
 app.use(cors());
 app.use(express.json());
 
-// Inisialisasi Midtrans Snap SDK
+// Inisialisasi Midtrans Snap
 const snap = new midtransClient.Snap({
-    isProduction: false, // Set false untuk Mode Sandbox (Uji Coba)
-    serverKey: process.env.MIDTRANS_SERVER_KEY || 'SB-Mid-server-YOUR_SERVER_KEY_HERE', // Server Key Midtrans
-    clientKey: process.env.MIDTRANS_CLIENT_KEY || 'SB-Mid-client-YOUR_CLIENT_KEY_HERE'   // Client Key Midtrans
+    isProduction: false,
+    serverKey: 'SB-Mid-server-YOUR_SERVER_KEY_HERE' // Ganti Server Key Sandbox kamu
 });
 
-// Endpoint API untuk Minta Token Transaksi
+// Endpoint yang dipanggil oleh ticket.html
 app.post('/api/charge-ticket', async (req, res) => {
     try {
-        const { order_id, gross_amount, first_name, email, phone, ticket_name } = req.body;
+        const { order_id, gross_amount, first_name, email, ticket_name } = req.body;
 
         const parameter = {
             transaction_details: {
                 order_id: order_id,
-                gross_amount: parseInt(gross_amount)
+                gross_amount: gross_amount
             },
             customer_details: {
                 first_name: first_name,
-                email: email,
-                phone: phone
+                email: email
             },
             item_details: [{
                 id: 'TICKET-01',
-                price: parseInt(gross_amount),
+                price: gross_amount,
                 quantity: 1,
                 name: ticket_name
             }]
         };
 
-        // Minta Snap Token dari Midtrans
         const transaction = await snap.createTransaction(parameter);
         
-        // Kirimkan snap_token balik ke Frontend
-        res.json({
+        res.status(200).json({
             status: 'success',
             snap_token: transaction.token
         });
 
     } catch (error) {
-        console.error('Midtrans Error:', error.message);
+        console.error('Error Midtrans:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 });
 
-// Jalankan Server di Port 5000
-const PORT = process.env.PORT || 5000;
+// Port untuk lokal & Vercel
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Backend Midtrans berhasil berjalan di http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
+
+module.exports = app;
