@@ -124,8 +124,8 @@ async function sendTicketEmail(ticket) {
             subject: `[E-Ticket Resmi] Pembayaran Berhasil - ${ticket.order_id}`,
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-                    <h2 style="color: #4F46E5; text-align: center; margin-bottom: 5px;">E-TICKET RESMI</h2>
-                    <p style="text-align: center; color: #64748b; margin-top: 0;">Synegry Event</p>
+                    <h2 style="color: #4F46E5; text-align: center; margin-bottom: 5px;">E-TICKET RESMI SYNESTHESIA</h2>
+                    <p style="text-align: center; color: #64748b; margin-top: 0;">Synesthesia Event</p>
                     <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 15px 0;">
                     
                     <p>Halo <b>${ticket.first_name}</b>,</p>
